@@ -12,10 +12,11 @@ t_ppm ppm_copy(t_ppm p){
 
 t_ppm ppm_operation_rotate90(t_ppm p){
   t_ppm new = ppm_create(p.width, p.height, p.depth);
-  unsigned int row,col;
+  unsigned int row,col,new_col;
   for (row=0; row < p.height; row++){
+    new_col = p.height - row -1;
     for (col=0; col < p.width; col++){
-	    new.pixels[col][row]= p.pixels[row][col];
+	    new.pixels[col][new_col]= p.pixels[row][col];
     }
   }
   return new;

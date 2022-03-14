@@ -39,99 +39,135 @@ static void usage(char *argv[], int code){
   exit(code);
 }
 
-static int parse_args(int argc, char *argv[], 
-                      bool *r_flag, bool *h_flag, bool *v_flag, bool *b_flag, bool *n_flag,
-                      char **in_name, char **out_name, unsigned char *ratio){
-  int opt;
-  int i_count = 0, o_count = 0;
-  *in_name = NULL;
-  *out_name = NULL;
-
-  while ((opt = getopt(argc, argv, OPTION_STRING)) != -1) {
-    switch (opt)
-    {
-    case OP_I:
-      i_count++;    
-      *in_name = optarg;
-      break;
-    case OP_O:
-      o_count++;
-      *out_name = optarg;
-      break;
-    case OP_R:
-      *r_flag= true;
-      break;
-    case OP_V:
-      *v_flag = true;
-      break;
-    case OP_H:
-      *h_flag = true;
-      break;
-    case OP_B:
-      *b_flag = true;
-      //if (strtol(optarg, NULL, 10) < 0 || > 255) --> habria que chequear esto?
-      *ratio = (unsigned char) strtol(optarg, NULL, 10);
-      break;
-    case OP_N:
-      *n_flag = true;
-      break;
-    case HELP:
-      usage(argv, EXIT_SUCCESS);
-      break;
-    default:
-      return (int) false;
-      break;
-    }
-  }
-  
-  if (i_count != 1 || o_count != 1) return (int) false;         // error(1,0, "Error in input/output arguments");
-  if (in_name == NULL || out_name == NULL) return (int) false;  // error(1,0, "Missing input/output filenames");
-  if (*b_flag && ratio == NULL) return (int) false;             // error(1,0, "Missing blur radio value");
-  if (optind != argc) return (int) false;                       // error(1,0, "Invalid arguments");
-  return (int) true;
-}
-
-
 /* Main program */
 
 int main(int argc, char* argv[]) {
   FILE *f, *op;
-  char *input_filename, *output_filename;
   t_ppm p, p_op;
-  bool h_flag, v_flag, r_flag, b_flag, n_flag;
+
+  char *input_filename, *output_filename;
   unsigned char ratio;
-  h_flag = v_flag = r_flag = b_flag = n_flag = false;
-
-  if (!parse_args(argc, argv, &r_flag, &h_flag, &v_flag, &b_flag, &n_flag, &input_filename, &output_filename, &ratio)){
-    usage(argv, EXIT_FAILURE);
-  }
-
-  /* Opening files and creating ppm struct */
-  if ((f = fopen(input_filename, "rb")) == NULL) {
-    error(1,errno, "Error opening file %s", input_filename);
-  }
-  p = ppm_from_file(f);
-
-  if ((op = fopen(output_filename, "wb")) == NULL) {
-    error(1,errno, "Error opening file %s", output_filename);
-  }
-
-  /* PPM processing*/
-  p_op = ppm_copy(p);
-  if (r_flag) p_op = ppm_operation_rotate90(p_op);
-  if (n_flag) p_op = ppm_operation_negative(p_op);
-  if (h_flag) p_op = ppm_operation_flip_horizontal(p_op);
-  if (v_flag) p_op = ppm_operation_flip_vertical(p_op);
-  if (b_flag) p_op = ppm_operation_blur(p_op, ratio);
   
-  ppm_save(p_op, op);
+  int opt;
+  int i_count = 0, o_count = 0;
+  input_filename = output_filename = (char *) NULL;
+  
 
-  /* Output file closed and PPM struct must free its memory */
+  while ((opt = getopt(argc, argv, OPTION_STRING)) != -1) {
+    switch (opt)
+    {
+      case OP_I:        
+        input_filename = optarg;
+        if (input_filename == NULL){
+          error(1, errno, "Missing input file name"); 
+        }
+        if (i_count != 0){
+          error(1, errno, "Too many input files" );  
+        }
+        /* Opening files and creating ppm struct */
+        if ((f = fopen(input_filename, "rb")) == NULL) {
+          error(1,errno, "Error opening file %s", input_filename);
+        }      
+        p = ppm_from_file(f);
+        i_count++;
+        break;
+      case OP_O:
+        if (i_count != 1){
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        output_filename = optarg;
+        if (output_filename == NULL){
+          error(1, errno, "Missing output file name"); 
+        }
+        if (o_count != 0){
+          error(1, errno, "Too many output files" );  
+        }
+        if ((op = fopen(output_filename, "wb")) == NULL) {
+          error(1,errno, "Error opening file %s", output_filename);
+        }
+        o_count++;
+        break;
+      case OP_R:
+        if (i_count != 1){
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        p_op = ppm_operation_rotate90(p);
+        ppm_free(p);
+        p = p_op;
+        break;
+      case OP_V:
+        if (i_count != 1){
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        p_op = ppm_operation_flip_vertical(p);
+        ppm_free(p);
+        p = p_op;
+        break;
+      case OP_H:
+        if (i_count != 1){        
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        p_op = ppm_operation_flip_horizontal(p);
+        ppm_free(p);
+        p = p_op;
+        break;
+      case OP_B:
+        if (i_count != 1){ 
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        //ratio = (unsigned char) strtol(optarg, NULL, 10);
+        if (sscanf(optarg, "%hhu", &ratio) != 1){
+          ppm_free(p);
+          fclose(f);
+          if (o_count == 1) fclose(op);
+          error(1, errno, "Error. Ratio must be a value between 0 and 255");
+        }
+        p_op = ppm_operation_blur(p, ratio);
+        ppm_free(p);
+        p = p_op;
+        break;
+      case OP_N:
+        if (i_count != 1){ 
+          error(1, errno, "Error. An input file must be specified as the first argument");  
+        }
+        p_op = ppm_operation_negative(p);
+        ppm_free(p);
+        p = p_op;
+        break;
+      case HELP:
+        usage(argv, EXIT_SUCCESS);
+        break;
+      default:
+        error(1, errno, "Invalid option");
+        break;
+    }
+  }
+
+  if (optind != argc) {
+    if (i_count == 1){
+      fclose(f);
+      ppm_free(p);
+    }
+    if (o_count == 1){
+      fclose(op);
+    } 
+    error(1,errno, "Invalid arguments");
+  }
+
+  if (o_count != 1){
+    ppm_free(p);
+    fclose(f);
+    error(1, errno, "Error. No output file specified");
+  }  
+
+  /* Result ppm image saved in output file */
+  ppm_save(p, op);
+
+  /* Input and output file closed and PPM struct must free its memory */
   fclose(op);
-  ppm_free(p_op);
-
-  /* Input file closed and PPM struct must free its memory */
-  ppm_free(p);
   fclose(f);
+  
+  ppm_free(p);
+  
   exit(EXIT_SUCCESS);
 }
